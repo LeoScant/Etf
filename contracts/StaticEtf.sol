@@ -5,6 +5,7 @@ import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./PriceConsumer.sol";
 import "./Interfaces/IWETH.sol";
 
@@ -18,15 +19,22 @@ struct CryptoToken {
     address tokenContract; // Indirizzo del contratto della criptovaluta
 }
 
-contract StaticEtf is ERC20 {
+
+contract StaticEtf is ERC20, Ownable {
     ISwapRouter constant router = ISwapRouter(SWAPROUTER);
     PriceConsumerV3 public ethUsdContract;
     uint public totalWeight;
 
+    event TokenBought(string tokenSymbol, uint256 amount);
+    event TokenSold(string tokenSymbol, uint256 amount);
+    event EthSent(address recipient, uint256 amount);
+    event CryptoTokenMinted(address sender, uint256 amount);
+    event CryptoTokenBurnt(address sender, uint256 amount);
+
     // Lista delle criptovalute nella pool
     CryptoToken[] public cryptoTokens;
 
-    constructor(CryptoToken[] memory _cryptoTokens) ERC20("CryptoETF", "CETF") {
+    constructor(CryptoToken[] memory _cryptoTokens) ERC20("CryptoETF", "CETF") Ownable(msg.sender) {
         for (uint256 i = 0; i < _cryptoTokens.length; i++) {
             CryptoToken memory token = _cryptoTokens[i];
             addCryptoToken(token.symbol, token.tokenContract, token.weight);
@@ -53,12 +61,14 @@ contract StaticEtf is ERC20 {
     }
 
     function buyToken() external payable {
-        IWETH(WETH).deposit{value: msg.value}();
-        IWETH(WETH).approve(address(SWAPROUTER), msg.value);
+        require(msg.value > 0, "Amount must be > 0");
+        uint amountAfterFee = (msg.value * 997) / 1000;
+        IWETH(WETH).deposit{value: amountAfterFee}();
+        IWETH(WETH).approve(address(SWAPROUTER), amountAfterFee);
         uint256 shares;
 
         for (uint256 i = 0; i < cryptoTokens.length; i++) {
-            uint amount = (msg.value * cryptoTokens[i].weight) / totalWeight;
+            uint amount = (amountAfterFee * cryptoTokens[i].weight) / totalWeight;
             require(amount > 0, "Amount must be > 0");
 
             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
@@ -74,9 +84,11 @@ contract StaticEtf is ERC20 {
                 });
 
             uint256 amountOut = router.exactInputSingle(params);
+            emit TokenBought(cryptoTokens[i].symbol, amountOut);
             shares += amountOut;
         }
         _mint(msg.sender, shares);
+        emit CryptoTokenMinted(msg.sender, shares);
     }
 
     function sellToken(uint256 tokenAmount) external {
@@ -109,14 +121,24 @@ contract StaticEtf is ERC20 {
                     sqrtPriceLimitX96: 0
                 });
             uint256 amountOut = router.exactInputSingle(params);
+            emit TokenSold(cryptoTokens[i].symbol, amountToSell);
             totalAmountOut += amountOut;
         }
 
         IWETH(WETH).withdraw(totalAmountOut);
-        TransferHelper.safeTransferETH(msg.sender, totalAmountOut);
+        uint amountAfterFee = (totalAmountOut * 997) / 1000;
+        TransferHelper.safeTransferETH(msg.sender, amountAfterFee);
+        emit EthSent(msg.sender, amountAfterFee);
 
         _burn(msg.sender, tokenAmount);
+        emit CryptoTokenBurnt(msg.sender, tokenAmount);
     }
 
     receive() external payable {}
+
+    //function to withdraw ETH from this contract
+    function withdraw() external onlyOwner {
+        uint256 amount = address(this).balance;
+        TransferHelper.safeTransferETH(msg.sender, amount);
+    }
 }
