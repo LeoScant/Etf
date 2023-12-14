@@ -96,11 +96,11 @@ contract DynamicEtf is ERC20 {
         // Calculate the current price and market cap for each cryptocurrency and the total market cap of the cryptos in the pool
         for (uint256 i = 0; i < cryptoTokens.length; i++) {
             tokenInfoArray[i].price = cryptoTokens[i].priceFeed.getLatestPrice();
-            tokenInfoArray[i].marketCap = uint256(tokenInfoArray[i].price) * IERC20(cryptoTokens[i].tokenContract).totalSupply() / 1e18;
+            tokenInfoArray[i].marketCap = uint256(tokenInfoArray[i].price) * IERC20(cryptoTokens[i].tokenContract).totalSupply() / (10 ** cryptoTokens[i].priceFeed.getPriceDecimals());
             totalMarketCap += tokenInfoArray[i].marketCap;
 
             // Calculate the current value of the portfolio for each cryptocurrency and the total Value of the portfolio
-            tokenInfoArray[i].value = (IERC20(cryptoTokens[i].tokenContract).balanceOf(address(this)) * uint256(tokenInfoArray[i].price)) / 1e18;
+            tokenInfoArray[i].value = (IERC20(cryptoTokens[i].tokenContract).balanceOf(address(this)) * uint256(tokenInfoArray[i].price)) / (10 ** cryptoTokens[i].priceFeed.getPriceDecimals());
             totalWalletValue += tokenInfoArray[i].value;
         }
 
@@ -232,7 +232,7 @@ contract DynamicEtf is ERC20 {
             int256 price = token.priceFeed.getLatestPrice();
 
             // Calculate the amount of the token to sell based on the ETH value and token price
-            uint256 amountToSell = ((amountsToSell[i] + ((totalEthOut * token.weight)/ balanceFactor)) * 1e18) 
+            uint256 amountToSell = ((amountsToSell[i] + ((totalEthOut * token.weight)/ balanceFactor)) * (10 ** token.priceFeed.getPriceDecimals())) 
             / (uint256(price));
 
             require(amountToSell > 0, "Amount to sell must be > 0");
