@@ -56,6 +56,9 @@ describe("DynamicEtf", function () {
 
     const ETHSpentAddr1 = 20;
     const ETHSpentAddr2 = 50;
+    
+    const fees1 = ETHSpentAddr1 * 3 / 1000;
+    const fees2 = ETHSpentAddr2 * 3 / 1000;
 
     it("Should return the right name and symbol", async function () {
         [owner, user1, user2] = await ethers.getSigners();
@@ -104,9 +107,9 @@ describe("DynamicEtf", function () {
         await expect(tx1).to.emit(dynamicEtf, 'TokenBought').withArgs(CompSymbol, COMPBalance)
 
         const cryptoTokensBalance1 = await dynamicEtf.balanceOf(user1Address)
-        await expect(tx1).to.emit(dynamicEtf, 'CryptoTokenMinted').withArgs(user1Address, toWei(ETHSpentAddr1))
+        await expect(tx1).to.emit(dynamicEtf, 'CryptoTokenMinted').withArgs(user1Address, toWei(ETHSpentAddr1 - fees1))
         
-        expect(cryptoTokensBalance1).to.equal(toWei(ETHSpentAddr1))
+        expect(cryptoTokensBalance1).to.equal(toWei(ETHSpentAddr1 - fees1))
 
         // Check that the contract has the right amount of ETH
         const TokensValue1 = 
@@ -114,7 +117,7 @@ describe("DynamicEtf", function () {
             (DAIPrice * Number(DAIBalance)) +
             (UNIPrice * Number(UNIBalance)) +
             (COMPPrice * Number(COMPBalance))
-        expect(TokensValue1).to.be.closeTo(Number(toWei(ETHSpentAddr1)), Number(toWei(1)));
+        expect(TokensValue1).to.be.closeTo(Number(toWei(ETHSpentAddr1 - fees1)), Number(toWei(1)));
 
         // Buy tokens with ETH for addr2
         const totalSupply = await dynamicEtf.totalSupply()
@@ -203,5 +206,16 @@ describe("DynamicEtf", function () {
 
         // check if EthSent event emitted
         await expect(tx1).to.emit(dynamicEtf, 'EthSent')
+    });
+
+    it("Owner withdraw ETH", async function () {
+        const ethContractBalance = await provider.getBalance(dynamicEtfAddress);
+        const tx = await dynamicEtf.connect(owner).withdraw();
+        await expect(tx).to.changeEtherBalance(owner, ethContractBalance);
+        expect(ethContractBalance).to.be.closeTo(toWei((fees1 + fees2)*2), toWei(0.01))
+    });
+
+    it("users can't withdraw ETH", async function () {
+        await expect(dynamicEtf.connect(user1).withdraw()).to.be.revertedWithCustomError(dynamicEtf, "OwnableUnauthorizedAccount");
     });
 });

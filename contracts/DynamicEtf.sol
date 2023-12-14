@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./PriceConsumer.sol";
@@ -37,7 +38,7 @@ struct TokenToBuyInfo {
     uint256 amount;
 }
 
-contract DynamicEtf is ERC20 {
+contract DynamicEtf is ERC20, Ownable {
     ISwapRouter constant router = ISwapRouter(SWAPROUTER);
     PriceConsumerV3 public ethUsdContract;
     CryptoToken[] public cryptoTokens;
@@ -50,7 +51,7 @@ contract DynamicEtf is ERC20 {
     event CryptoTokenBurnt(address sender, uint256 amount);
 
     // Inizialize the pool with the list of cryptocurrencies
-    constructor(InizializationInfo[] memory _tokenInfo) ERC20("CryptoETF", "CETF") {
+    constructor(InizializationInfo[] memory _tokenInfo) ERC20("CryptoETF", "CETF") Ownable(msg.sender) {
         for (uint256 i = 0; i < _tokenInfo.length; i++) {
             InizializationInfo memory token = _tokenInfo[i];
             addCryptoToken(
@@ -137,11 +138,13 @@ contract DynamicEtf is ERC20 {
      * Emits a TokenBought event for each token bought and a CryptoTokenMinted event for the shares minted.
      */
     function buyToken() external payable {
-        uint256 totalAmountToBuy = msg.value;
+        // Calculate the amount of ETH after deducting the fee
+        uint amountAfterFee = (msg.value * 997) / 1000;
+        uint256 totalAmountToBuy = amountAfterFee;
 
         // Deposit the ETH value of the transaction into the WETH contract and approve the SWAPROUTER to spend the deposited WETH
-        IWETH(WETH).deposit{value: msg.value}();
-        IWETH(WETH).approve(address(SWAPROUTER), msg.value);
+        IWETH(WETH).deposit{value: amountAfterFee}();
+        IWETH(WETH).approve(address(SWAPROUTER), amountAfterFee);
 
         // Get the total value of the portfolio and the amount of each token to buy
         (
@@ -182,8 +185,8 @@ contract DynamicEtf is ERC20 {
 
         // Calculate the shares to mint based on the total supply and the value of the transaction
         uint256 sharesToMint = totalSupply == 0 || totalWalletValue == 0 ?
-            msg.value :
-            (msg.value * totalSupply) / totalWalletValue;
+            amountAfterFee :
+            (amountAfterFee * totalSupply) / totalWalletValue;
 
         // Mint the shares to the sender of the transaction
         _mint(msg.sender, sharesToMint);
@@ -257,7 +260,8 @@ contract DynamicEtf is ERC20 {
 
         // Withdraw the total amount of ETH received
         IWETH(WETH).withdraw(totalAmountOut);
-        TransferHelper.safeTransferETH(msg.sender, totalAmountOut);
+        uint amountAfterFee = (totalAmountOut * 997) / 1000;
+        TransferHelper.safeTransferETH(msg.sender, amountAfterFee);
         emit EthSent(msg.sender, totalAmountOut);
 
         // Burn the specified amount of tokens from the seller
@@ -290,7 +294,7 @@ contract DynamicEtf is ERC20 {
     receive() external payable {}
 
     //function to withdraw ETH from this contract
-    function withdraw() external {
+    function withdraw() external onlyOwner {
         uint256 amount = address(this).balance;
         TransferHelper.safeTransferETH(msg.sender, amount);
     }

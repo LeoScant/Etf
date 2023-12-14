@@ -45,3 +45,4 @@ Possible future developments for the DynamicEtf smart contract might include:
 ## Deployment
 
 To deploy the contracts, use the `deploy.js` script in the `scripts/` directory. You can run it with `npx hardhat run scripts/deploy.js`.
+Since calling the functions consumes a high amount of gas I would deploy these smart contract in a blockchain like Polygon.
